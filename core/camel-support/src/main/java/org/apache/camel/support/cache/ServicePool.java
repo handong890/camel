@@ -23,6 +23,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 
 import org.apache.camel.Endpoint;
@@ -226,19 +227,22 @@ abstract class ServicePool<S extends Service> extends ServiceSupport implements 
             this.endpoint = endpoint;
         }
 
-        @Override
+       @Override
         public S acquire() throws Exception {
             cleanupEvicts();
 
             if (s == null) {
-                synchronized (this) {
-                    if (s == null) {
-                        LOG.trace("Creating service from endpoint: {}", endpoint);
-                        S tempS = creator.apply(endpoint);
-                        endpoint.getCamelContext().addService(tempS, true, true);
-                        s = tempS;
-                    }
+                ReentrantLock acquireLock = new ReentrantLock();
+                try {
+                    acquireLock.lock();
+                    LOG.trace("Creating service from endpoint: {}", endpoint);
+                    S tempS = creator.apply(endpoint);
+                    endpoint.getCamelContext().addService(tempS, true, true);
+                    s = tempS;
+                }finally {
+                    acquireLock.unlock();
                 }
+
             }
             LOG.trace("Acquired service: {}", s);
             return s;
